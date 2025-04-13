@@ -14,6 +14,11 @@ export type State = {
   message?: string | null;
 };
 
+export type UpdateInvoicePayload = {
+  formData: FormData;
+  id: string;
+}
+
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" });
 
 const FormSchema = z.object({
@@ -65,13 +70,22 @@ export async function createInvoice(prevState: State, formData: FormData) {
   redirect("/dashboard/invoices");
 }
 
-export async function updateInvoice(id: string, formData: FormData) {
-  const { customerId, amount, status } = UpdateInvoice.parse({
+export async function updateInvoice(id: string, state: State, formData: FormData) {
+
+  const validatedFields = UpdateInvoice.safeParse({
     customerId: formData.get("customerId"),
     amount: formData.get("amount"),
     status: formData.get("status"),
   });
 
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Update Invoice.',
+    };
+  }
+
+  const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
 
   try {
@@ -81,9 +95,11 @@ export async function updateInvoice(id: string, formData: FormData) {
       WHERE id = ${id}
     `;
   } catch(error) {
-    console.error("Error updating invoice:", error);
-    throw new Error("Failed to update invoice");
+    return {
+      message: "Database Error: Failed to update invoice.",
+    };
   }
+
   revalidatePath("/dashboard/invoices");
   redirect("/dashboard/invoices");
 }
